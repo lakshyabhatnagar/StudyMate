@@ -1,6 +1,6 @@
 import { usersTable } from "@/config/schema";
 import { currentUser } from "@clerk/nextjs/server";
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { db } from "@/config/db";
 import { eq } from "drizzle-orm";
 
@@ -22,6 +22,7 @@ export async function POST() {
       );
     }
 
+    // Fast path: already exists
     const existing = await db
       .select()
       .from(usersTable)
@@ -31,13 +32,20 @@ export async function POST() {
       return NextResponse.json(existing[0]);
     }
 
-    const inserted = await db
+    // Race-safe insert
+    await db
       .insert(usersTable)
       .values({
         email,
         name: user.fullName ?? "",
       })
-      .returning();
+      .onConflictDoNothing();
+
+    // Canonical fetch (covers both insert + concurrent insert)
+    const inserted = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.email, email));
 
     return NextResponse.json(inserted[0]);
   } catch (err) {

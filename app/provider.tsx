@@ -1,26 +1,27 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
+import { useUser } from "@clerk/nextjs";
 import axios from "axios";
 import { UserDetailContext } from "@/context/UserDetailContext";
 
 function Provider({ children }: { children: React.ReactNode }) {
+  const { isLoaded, isSignedIn } = useUser();
   const [userDetail, setUserDetail] = useState<any>(null);
 
-  useEffect(() => {
-    if (!userDetail) {
-      CreateNewUser();
-    }
-  }, []);
-
-  const CreateNewUser = async () => {
+  const createNewUser = useCallback(async () => {
     try {
       const result = await axios.post("/api/user");
       setUserDetail(result.data);
     } catch (err) {
       console.error("User creation failed", err);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn || userDetail) return;
+    createNewUser();
+  }, [isLoaded, isSignedIn, userDetail, createNewUser]);
 
   return (
     <UserDetailContext.Provider value={{ userDetail, setUserDetail }}>

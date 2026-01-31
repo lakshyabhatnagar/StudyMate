@@ -7,17 +7,15 @@ import {
   InputGroupTextarea,
 } from "@/components/ui/input-group"
 import { Loader2, Send } from 'lucide-react'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import dynamic from "next/dynamic";
 import { QUICK_VIDEO_SUGGESTIONS } from '@/data/constant'
 import axios from 'axios'
 import { toast } from 'sonner'
 import { SignInButton, useUser } from '@clerk/nextjs'
+
+const HeroSelect = dynamic(() => import("./HeroSelect"), {
+  ssr: false,
+});
 
 
 function Hero() {
@@ -43,10 +41,11 @@ function Hero() {
     } catch (err) {
         console.error(err);
         toast.error("Failed to generate course");
+        toast.dismiss(toastId);
     } finally {
         setLoading(false);
-        toast.success("Course layout generated successfully!", {id:toastId});
     }
+    toast.success("Course layout generated successfully!", {id:toastId}); 
 };
 
     return (
@@ -65,15 +64,7 @@ function Hero() {
                 onChange={(e)=>setUserInput(e.target.value)}
                 />
                 <InputGroupAddon align="block-end">
-                <Select>
-                    <SelectTrigger className="w-[180px]">
-                        <SelectValue placeholder="full-course" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="full-course">Full Course</SelectItem>
-                        <SelectItem value="quick-explain-video">Quick Explanation Video</SelectItem>
-                    </SelectContent>
-                </Select>
+                <HeroSelect value={type} onChange={setType} />
                 {user?
                 <InputGroupButton className="ml-auto" size="icon-sm" variant="default"
                     onClick={GenerateCourseLayout}

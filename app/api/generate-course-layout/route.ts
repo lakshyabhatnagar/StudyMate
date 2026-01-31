@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
       userInput: userInput,
       type: type,
       courseLayout: parsed,
-      userId: user?.primaryEmailAddress?.emailAddress||"" 
+      userId: user?.primaryEmailAddress?.emailAddress ?? null
     }).returning();
 
     return NextResponse.json(courseResult[0]);
