@@ -5,6 +5,7 @@ import {
 } from '@clerk/nextjs'
 import "./globals.css";
 import Provider from "./provider";
+import { Toaster } from "@/components/ui/sonner";
 
 const AppFont=Poppins({
   subsets: ["latin"],
@@ -28,6 +29,7 @@ export default function RootLayout({
         <body className={AppFont.className}>
           <Provider>
             {children}
+            <Toaster position="top-center" richColors />
           </Provider>
         </body>
       </html>
