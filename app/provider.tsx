@@ -1,30 +1,33 @@
-"use client"
-import React, { useEffect } from 'react'
-import axios from 'axios'
-import { UserDetailContext } from '@/context/UserDetailContext';
+"use client";
 
-function Provider({children }: { children: React.ReactNode }) {
-    const [userDetail,setUserDetail]=React.useState(null);
-    useEffect(()=>{
-        //call create new user function on component mount
-        CreateNewUser();
-    },[])
+import React, { useCallback, useEffect, useState } from "react";
+import { useUser } from "@clerk/nextjs";
+import axios from "axios";
+import { UserDetailContext } from "@/context/UserDetailContext";
 
-    const CreateNewUser=async ()=>{
-        //user API endpoint to create new user
-        const result=await axios.post('/api/user',{});
-        console.log("New user created:",result.data);
-        setUserDetail(result?.data);
+function Provider({ children }: { children: React.ReactNode }) {
+  const { isLoaded, isSignedIn } = useUser();
+  const [userDetail, setUserDetail] = useState<any>(null);
+
+  const createNewUser = useCallback(async () => {
+    try {
+      const result = await axios.post("/api/user");
+      setUserDetail(result.data);
+    } catch (err) {
+      console.error("User creation failed", err);
     }
+  }, []);
+
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn || userDetail) return;
+    createNewUser();
+  }, [isLoaded, isSignedIn, userDetail, createNewUser]);
+
   return (
-    <div>
-        <UserDetailContext.Provider value={{ userDetail, setUserDetail }}>
-        <div className="max-w-7xl mx-auto">
-            {children}
-        </div>
-        </UserDetailContext.Provider>
-    </div>
-  )
+    <UserDetailContext.Provider value={{ userDetail, setUserDetail }}>
+      <div className="max-w-7xl mx-auto">{children}</div>
+    </UserDetailContext.Provider>
+  );
 }
 
-export default Provider
+export default Provider;
