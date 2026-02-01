@@ -21,7 +21,7 @@ function CourseChapters({course}:Props) {
 
 
         <div className='mt-5 '>
-            {course?.courseLayout?.chapters.map((chapter, index) => (
+            {course?.courseLayout?.chapters?.map((chapter, index) => (
                 <Card className='mb-5' key={index}>
                     <CardHeader>
                         <div className='flex gap-3 items-center'>
@@ -34,7 +34,7 @@ function CourseChapters({course}:Props) {
                     <CardContent>
                         <div className='grid grid-cols-2 gap-5'>
                             <div>
-                                {chapter?.subContent.map((content,index)=>(
+                                {chapter?.subContent?.map((content,index)=>(
                                     <div className='flex gap-2 items-center mt-2' key={index}>
                                         <Dot className='h-5 w-5 text-emerald-500'/>
                                         <h2>{content}</h2>
