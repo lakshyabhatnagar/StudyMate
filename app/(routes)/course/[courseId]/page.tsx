@@ -5,6 +5,7 @@ import CourseInfoCard from "./_components/CourseInfoCard";
 import axios from "axios";
 import { useParams } from "next/navigation";
 import { Course } from "@/type/CourseType";
+import CourseChapters from "./_components/CourseChapters";
 
 function CoursePreview() {
   const params = useParams();
@@ -29,8 +30,9 @@ function CoursePreview() {
   };
 
   return (
-    <div>
+    <div className="flex flex-col items-center">
       <CourseInfoCard course={courseDetail} />
+      <CourseChapters course={courseDetail} />
     </div>
   );
 }
