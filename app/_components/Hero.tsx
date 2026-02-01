@@ -12,6 +12,7 @@ import { QUICK_VIDEO_SUGGESTIONS } from '@/data/constant'
 import axios from 'axios'
 import { toast } from 'sonner'
 import { SignInButton, useUser } from '@clerk/nextjs'
+import { useRouter } from 'next/navigation';
 
 const HeroSelect = dynamic(() => import("./HeroSelect"), {
   ssr: false,
@@ -23,20 +24,23 @@ function Hero() {
     const [type, setType]=useState("full-course");
     const [loading,setLoading]=useState(false);
     const {user}=useUser();
+    const router=useRouter();
 
     const GenerateCourseLayout = async () => {
     let toastId;
+    let courseID;
     try {
         setLoading(true);
         toastId = toast.loading("Generating course layout...");
-        const courseID=await crypto.randomUUID();
+        courseID=await crypto.randomUUID();
 
         const result = await axios.post('/api/generate-course-layout', {
         userInput,
         type,
         courseId: courseID,
         });
-
+        toast.success("Course layout generated successfully!", {id:toastId}); 
+        router.push(`/course/${courseID}`);
         console.log("Course Layout Generated:", result.data);
     } catch (err) {
         console.error(err);
@@ -45,7 +49,6 @@ function Hero() {
     } finally {
         setLoading(false);
     }
-    toast.success("Course layout generated successfully!", {id:toastId}); 
 };
 
     return (
