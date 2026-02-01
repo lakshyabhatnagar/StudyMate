@@ -1,5 +1,5 @@
 import { db } from "@/config/db";
-import { coursesTable } from "@/config/schema";
+import { chapterContentSlides, coursesTable } from "@/config/schema";
 import { NextRequest, NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 
@@ -25,13 +25,17 @@ export async function GET(req: NextRequest) {
     );
   }
 
+  const chapterContentSlide=await db.select().from(chapterContentSlides)
+  .where(eq(chapterContentSlides?.courseId, courseId as string)); 
+
   const course = courses[0];
 
   // normalize non-JSON fields
   return NextResponse.json({
-  ...course,
-  createdAt: course.createdAt
-    ? course.createdAt.toISOString()
-    : null,
-});
+    ...course,
+    createdAt: course.createdAt
+      ? course.createdAt.toISOString()
+      : null,
+      chapterContentSlide:chapterContentSlide
+  });
 }
