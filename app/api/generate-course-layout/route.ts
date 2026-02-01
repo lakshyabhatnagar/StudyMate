@@ -1,61 +1,88 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Generate_Video_Prompt } from "@/data/Prompt";
-import { client } from "@/config/openai";
+import { Course_config_prompt } from "@/data/Prompt";
 import { db } from "@/config/db";
 import { coursesTable } from "@/config/schema";
 import { currentUser } from "@clerk/nextjs/server";
+import { genAI } from "@/config/gemini";
+
 export async function POST(req: NextRequest) {
   try {
     const { userInput, courseId, type } = await req.json();
-    const user=await currentUser();
+    const user = await currentUser();
 
-    if (!userInput) {
+    if (!userInput || !courseId || !type) {
       return NextResponse.json(
-        { error: "Missing userInput" },
+        { error: "Missing required fields" },
         { status: 400 }
       );
     }
 
-    const response = await client.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
-      messages: [
-        { role: "system", content: Generate_Video_Prompt },
-        { role: "user", content: "Course topic is " + userInput }
-      ],
+    const model = genAI.getGenerativeModel({
+      model: "gemini-2.5-flash", 
     });
 
-    const raw = response.choices[0].message?.content;
+    const aiResult = await model.generateContent(
+    Course_config_prompt + "\n\nCourse topic is " + userInput
+    );
+
+
+    const raw =
+      aiResult.response.candidates?.[0]?.content?.parts?.[0]?.text;
+
     if (!raw) {
       return NextResponse.json(
         { error: "Empty AI response" },
-        { status: 500 }
+        { status: 422 }
       );
     }
+
+    const cleaned = raw
+      .trim()
+      .replace(/^```json/, "")
+      .replace(/^```/, "")
+      .replace(/```$/, "")
+      .trim();
 
     let parsed;
     try {
-      parsed = JSON.parse(raw);
+      parsed = JSON.parse(cleaned);
     } catch {
+      console.error("Invalid AI JSON:", raw);
       return NextResponse.json(
-        { error: "AI did not return valid JSON" },
-        { status: 500 }
+        { error: "AI returned invalid JSON" },
+        { status: 422 }
       );
     }
-    const courseResult= await db.insert(coursesTable).values({
-      courseId: courseId,
-      courseName:userInput,
-      userInput: userInput,
-      type: type,
-      courseLayout: parsed,
-      userId: user?.primaryEmailAddress?.emailAddress ?? null
-    }).returning();
 
-    return NextResponse.json(courseResult[0]);
-  } catch (err) {
+    const dbResult = await db
+      .insert(coursesTable)
+      .values({
+        courseId,
+        courseName: parsed.courseName,
+        userInput,
+        type,
+        courseLayout: JSON.stringify(parsed),
+        userId: user?.primaryEmailAddress?.emailAddress ?? null,
+      })
+      .returning();
+
+    return NextResponse.json(dbResult[0]);
+
+  } catch (err: any) {
     console.error("generate-course-layout error:", err);
+
+    const status =
+      err?.status ||
+      err?.response?.status ||
+      500;
+
+    const message =
+      err?.message ||
+      "Internal server error";
+
     return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
+      { error: message },
+      { status }
     );
   }
 }
