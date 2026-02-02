@@ -1,16 +1,19 @@
 import { db } from "@/config/db";
 import { chapterContentSlides, coursesTable } from "@/config/schema";
 import { NextRequest, NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
+import { currentUser } from "@clerk/nextjs/server";
 
 export async function GET(req: NextRequest) {
   const courseId = req.nextUrl.searchParams.get("courseId");
+  const user=await currentUser();
 
   if (!courseId) {
-    return NextResponse.json(
-      { error: "courseId missing" },
-      { status: 400 }
-    );
+    const userCourses= await db.select().from(coursesTable) 
+    .where(eq(coursesTable.userId, user?.primaryEmailAddress?.emailAddress as string))
+    .orderBy(desc(coursesTable.createdAt));
+
+    return NextResponse.json(userCourses);
   }
 
   const courses = await db

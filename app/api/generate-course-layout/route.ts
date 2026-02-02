@@ -2,13 +2,24 @@ import { NextRequest, NextResponse } from "next/server";
 import { Course_config_prompt } from "@/data/Prompt";
 import { db } from "@/config/db";
 import { coursesTable } from "@/config/schema";
-import { currentUser } from "@clerk/nextjs/server";
+import { auth, currentUser } from "@clerk/nextjs/server";
 import { genAI } from "@/config/gemini";
+import { eq } from "drizzle-orm";
 
 export async function POST(req: NextRequest) {
   try {
     const { userInput, courseId, type } = await req.json();
     const user = await currentUser();
+
+    const {has}=await auth();
+    const isPaidUser = has({ plan: 'monthly' })
+    
+    if(!isPaidUser){
+      const userCoursesCount=await db.select().from(coursesTable).where(eq(coursesTable?.userId,user?.primaryEmailAddress?.emailAddress as string));
+      if(userCoursesCount?.length>=2){
+        return NextResponse.json({ msg:'Upgrade to a paid plan to create more courses.'});
+      }
+    }
 
     if (!userInput || !courseId || !type) {
       return NextResponse.json(
