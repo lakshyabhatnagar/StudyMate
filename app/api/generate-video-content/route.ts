@@ -7,6 +7,7 @@ import { s3 } from "@/config/s3";
 import { VideoSlidesDummy } from "@/data/Dummy";
 import { db } from "@/config/db";
 import { chapterContentSlides } from "@/config/schema";
+import { and, eq } from "drizzle-orm";
 
 
 /* ---------- helper: safely extract JSON ---------- */
@@ -59,7 +60,6 @@ export async function POST(req: NextRequest) {
 
     const raw =
       aiResult.response.candidates?.[0]?.content?.parts?.[0]?.text;
-    console.log("RAW GEMINI VIDEO OUTPUT >>>", raw);
 
 
     if (!raw) {
@@ -84,7 +84,7 @@ export async function POST(req: NextRequest) {
     let audioFileUrls: string[] = [];  
 
     for (let i = 0; i < VideoContentJson.length; i++) {     
-      if (i > 0) break; // testing guard
+      // if (i > 0) break; // testing guard
 
         let narration =
         VideoContentJson[i]?.narration?.fullText ?? "";
@@ -136,6 +136,14 @@ export async function POST(req: NextRequest) {
     //Save everything to Database
         for (let index = 0; index < VideoContentJson.length; index++) {
         const slide = VideoContentJson[index];
+        await db
+        .delete(chapterContentSlides)
+        .where(
+          and(
+            eq(chapterContentSlides.courseId, courseId),
+            eq(chapterContentSlides.chapterId, chapter.chapterId)
+          )
+        );
 
         await db.insert(chapterContentSlides).values({
             courseId: courseId,
@@ -153,6 +161,12 @@ export async function POST(req: NextRequest) {
 
 
     /* ---------- response ---------- */
+    console.log("✅ VIDEO PIPELINE COMPLETE", {
+      slides: VideoContentJson.length,
+      audio: audioFileUrls.length,
+      captions: captionsArray.length,
+    });
+
     return NextResponse.json({
       slides: VideoContentJson,
       audioFileUrls,
@@ -172,7 +186,7 @@ async function saveAudioToS3(
   audioBuffer: Buffer,
   fileName: string
 ) {
-  const key = `${fileName}.mp3`;
+  const key = fileName.endsWith(".mp3") ? fileName : `${fileName}.mp3`;
 
   await s3.send(
     new PutObjectCommand({
@@ -209,7 +223,12 @@ export async function GenerateCaptions(audioUrl: string) {
   const pollingEndpoint = `${ASSEMBLYAI_BASE_URL}/transcript/${transcriptId}`;
 
   // 2️⃣ Poll until completed
+  const MAX_POLL_TIME_MS=5*60*1000;
+  const startTime=Date.now();
   while (true) {
+    if(Date.now()-startTime>MAX_POLL_TIME_MS){
+      throw new Error("AssemblyAI transcription timed out");
+    }
     const pollingResponse = await axios.get(pollingEndpoint, {
       headers: {
         authorization: process.env.ASSEMBLYAI_API_KEY!,

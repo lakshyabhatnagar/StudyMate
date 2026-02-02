@@ -2,14 +2,47 @@ import React from 'react'
 import { Course } from '@/type/CourseType';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dot } from 'lucide-react';
-import ChapterVideo from './ChapterVideo';
 import { Player } from '@remotion/player'
+import { CourseComposition } from './ChapterVideo';
 
 type Props={
     course:Course|undefined
+    durationsBySlideId: Record<string,number>|null;
 }
 
-function CourseChapters({course}:Props) {
+function CourseChapters({course, durationsBySlideId}:Props) {
+
+    const slides=course?.chapterContentSlide??[];
+    const GetChapterDurationInFrame = (chapterId: string) => {
+        if (!durationsBySlideId || !course) return 1;
+
+        const playableSlides = course.chapterContentSlide.filter(
+            (slide) =>
+            slide.chapterId === chapterId &&
+            slide.audioFileUrl &&
+            slide.audioFileUrl.length > 0
+        );
+
+        if (playableSlides.length === 0) return 1;
+
+        let total = 0;
+
+        for (const slide of playableSlides) {
+            const dur = durationsBySlideId[slide.slideId];
+
+            // ⛔ absolutely forbid NaN
+            if (typeof dur !== "number" || !Number.isFinite(dur) || dur <= 0) {
+            total += 180; // 6s fallback
+            } else {
+            total += dur;
+            }
+        }
+
+        return Math.max(1, total);
+    };
+
+
+
   return (
     <div className='max-w-6xl -mt-5 p-10 border rounded-3xl shadow w-full
         bg-background/80 backdrop-blur
@@ -43,8 +76,12 @@ function CourseChapters({course}:Props) {
                             </div>
                             <div className='overflow-hidden'>
                                 <Player
-                                    component={ChapterVideo}
-                                    durationInFrames={30}
+                                    component={CourseComposition}
+                                    inputProps={{
+                                        slides:slides.filter((slide) =>slide.chapterId === chapter.chapterId && slide.audioFileUrl && slide.audioFileUrl.length > 0),
+                                        durationsBySlideId:durationsBySlideId??{},
+                                    }}  
+                                    durationInFrames={GetChapterDurationInFrame(chapter?.chapterId)}
                                     compositionWidth={1280}
                                     compositionHeight={720}
                                     fps={30}
