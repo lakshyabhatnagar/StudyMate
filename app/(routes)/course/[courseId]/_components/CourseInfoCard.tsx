@@ -13,10 +13,13 @@ type Props={
 function CourseInfoCard({course, durationsBySlideId}:Props) {
     const fps=30;
     const slides=course?.chapterContentSlide??[];
+    const GAP_FRAMES = Math.round(1 * fps);
     const durationInFrames=useMemo(()=>{
         if(!durationsBySlideId) return;
-        return slides.reduce((sum,slide)=> sum+(durationsBySlideId[slide.slideId]?? fps*6),0)
-    },[durationsBySlideId,slides,fps]);
+        const slideDuration = slides.reduce((sum,slide)=> sum+(durationsBySlideId[slide.slideId]?? fps*6),0);
+        const gapsDuration = slides.length > 1 ? (slides.length - 1) * GAP_FRAMES : 0;
+        return slideDuration + gapsDuration;
+    },[durationsBySlideId,slides,fps,GAP_FRAMES]);
 
     if(!durationsBySlideId){
         return <div>Loading...</div>
@@ -38,6 +41,7 @@ function CourseInfoCard({course, durationsBySlideId}:Props) {
                 <Player
                     component={CourseComposition}
                     inputProps={{
+                        //@ts-ignore
                                 slides:slides,
                                 durationsBySlideId:durationsBySlideId,
                                 }} 
