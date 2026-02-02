@@ -26,6 +26,8 @@ function Hero() {
     const {user}=useUser();
     const router=useRouter();
 
+
+
     const GenerateCourseLayout = async () => {
     let toastId;
     let courseID;
@@ -39,7 +41,14 @@ function Hero() {
         type,
         courseId: courseID,
         });
+        if(result.data?.msg=='Upgrade to a paid plan to create more courses.'){
+            toast.error('Maximum Credits Reached!');
+            setLoading(false);
+            toast.dismiss(toastId);
+            return;
+        }
         toast.success("Course layout generated successfully!", {id:toastId}); 
+        setLoading(false);
         router.push(`/course/${courseID}`);
         console.log("Course Layout Generated:", result.data);
     } catch (err) {

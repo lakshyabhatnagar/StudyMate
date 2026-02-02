@@ -4,6 +4,7 @@ import Image from 'next/image'
 import { SignInButton, useUser } from '@clerk/nextjs';
 import { UserButton } from '@clerk/nextjs';
 import { Button } from '@/components/ui/button';
+import { Link } from 'lucide-react';
 
 function Header() {
     const {user}=useUser();
@@ -14,8 +15,8 @@ function Header() {
             <h2 className='text-xl font-bold'><span style={{color: '#3EACA3'}}>Study</span>Mate</h2>
         </div>
         <ul className='flex gap-8 items-center'>
-        <li className="text-lg font-medium cursor-pointer hover:text-[#3EACA3]">Home</li>
-        <li className="text-lg font-medium cursor-pointer hover:text-[#3EACA3]">Pricing</li>
+        <Link href={'/'}><li className="text-lg font-medium cursor-pointer hover:text-[#3EACA3]">Home</li></Link>
+        <Link href={'/pricing'}><li className="text-lg font-medium cursor-pointer hover:text-[#3EACA3]">Pricing</li></Link>
         </ul>
 
         {user?
