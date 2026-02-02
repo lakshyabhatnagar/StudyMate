@@ -40,7 +40,7 @@ export const chapterContentSlides = pgTable("chapter_content_slides", {
   narration: json().notNull(),
   html: text().notNull(),
   revelData: json().notNull(),
-  caption:json().notNull(),
-  audioFileUrl:varchar({ length: 1024 }).notNull(),
+  caption:json(),
+  audioFileUrl:varchar({ length: 1024 }),
 }
 )

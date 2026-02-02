@@ -7,6 +7,7 @@ import { useParams } from "next/navigation";
 import { Course } from "@/type/CourseType";
 import CourseChapters from "./_components/CourseChapters";
 import { toast } from "sonner";
+import { getAudioData } from "@remotion/media-utils";
 
 function CoursePreview() {
   const params = useParams();
@@ -47,12 +48,34 @@ function CoursePreview() {
       toast.success("Video content generated", { id: toastLoad });
     }
   };
-
+        const fps=30;
+        const slides=courseDetail?.chapterContentSlide??[];
+        const [durationsBySlideId, setDurationsBySlideId]=useState<Record<string,number>|null>(null);
+    
+        useEffect(()=>{
+            let cancelled=false;
+            const run=async()=>{
+                if(!slides) return;
+                const entries=await Promise.all(
+                    slides.map(async(slide: any)=>{
+                        const audioData=await getAudioData(slide?.audioFileUrl);
+                        const audioSec=audioData?.durationInSeconds ?? 0;
+                        const frames=Math.max(1,Math.ceil(audioSec*fps));
+                        return [slide.slideId,frames] as const;
+                    })
+                );
+                if(!cancelled){
+                    setDurationsBySlideId(Object.fromEntries(entries));
+                }
+            };
+            run();
+            return ()=>{cancelled=true;}
+        },[slides,fps]);
 
   return (
     <div className="flex flex-col items-center">
-      <CourseInfoCard course={courseDetail} />
-      <CourseChapters course={courseDetail} />
+      <CourseInfoCard course={courseDetail} durationsBySlideId={durationsBySlideId} />
+      <CourseChapters course={courseDetail} durationsBySlideId={durationsBySlideId} />
     </div>
   );
 }

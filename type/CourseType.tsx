@@ -35,4 +35,6 @@ export type ChapterContentSlide={
     },
     html:string,
     revelData:string[]
+    audioFileUrl: string;
+    caption: string;                          // may be {chunks:string[]}
 }
