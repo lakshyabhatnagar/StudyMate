@@ -12,29 +12,39 @@ type Props={
 
 function CourseInfoCard({course, durationsBySlideId}:Props) {
     const fps=30;
+    
     const slides=course?.chapterContentSlide??[];
     const GAP_FRAMES = Math.round(1 * fps);
     const durationInFrames=useMemo(()=>{
-        if(!durationsBySlideId) return;
-        const slideDuration = slides.reduce((sum,slide)=> sum+(durationsBySlideId[slide.slideId]?? fps*6),0);
+        if(!durationsBySlideId || slides.length === 0) {
+            return slides.length > 0 ? slides.length * fps * 8 + (slides.length - 1) * GAP_FRAMES : fps * 8; // 8 seconds per slide + gaps
+        }
+        
+        const slideDuration = slides.reduce((sum,slide)=> {
+            const duration = durationsBySlideId[slide.slideId] ?? fps * 8; // 8 seconds fallback
+            return sum + duration;
+        }, 0);
+        
         const gapsDuration = slides.length > 1 ? (slides.length - 1) * GAP_FRAMES : 0;
-        return slideDuration + gapsDuration;
+        const totalDuration = slideDuration + gapsDuration;
+        
+        return Math.max(fps * 2, totalDuration); // Ensure minimum 2 seconds
     },[durationsBySlideId,slides,fps,GAP_FRAMES]);
 
-    if(!durationsBySlideId){
-        return <div>Loading...</div>
+    if(!course || slides.length === 0){
+        return <div className="text-white p-8">Loading course content...</div>
     }
 
   return (
     <div>
         <div className='p-8 grid grid-cols-1 md:grid-cols-2 gap-5 bg-gradient-to-br from-slate-50 via-slate-800 to-emerald-950'>
             <div>
-                <h2 className='flex gap-2 p-1 px-2 border rounded-2xl inline-flex text-white border-gray-200/70'><Sparkles /> Course Preview</h2>
+                <h2 className='inline-flex gap-2 p-1 px-2 border rounded-2xl text-white border-gray-200/70'><Sparkles /> Course Preview</h2>
                 <h2 className='text-5xl font-bold mt-4 text-white '>{course?.courseName}</h2>
-                <p className='text-lg text-muted-foreground mt-3 text-white'>{course?.courseLayout?.courseDescription}</p>
+                <p className='text-lg mt-3 text-white'>{course?.courseLayout?.courseDescription}</p>
                 <div className='mt-5 flex gap-5'>
-                    <h2 className='px-3 p-2 border rounded-3xl flex gap-2 items-center inline-flex text-white'><ChartNoAxesColumnIncreasing className='text-sky-400'/>{course?.courseLayout?.level}</h2>
-                    <h2 className='px-3 p-2 border rounded-3xl flex gap-2 items-center inline-flex text-white'><BookOpen className='text-green-400'/>{course?.courseLayout?.totalChapters} Chapters </h2>
+                    <h2 className='px-3 p-2 border rounded-3xl inline-flex gap-2 items-center text-white'><ChartNoAxesColumnIncreasing className='text-sky-400'/>{course?.courseLayout?.level}</h2>
+                    <h2 className='px-3 p-2 border rounded-3xl inline-flex gap-2 items-center text-white'><BookOpen className='text-green-400'/>{course?.courseLayout?.totalChapters} Chapters </h2>
                 </div>
             </div>
             <div className='border-2 border-white/10 rounded-2xl'>
@@ -43,9 +53,9 @@ function CourseInfoCard({course, durationsBySlideId}:Props) {
                     inputProps={{
                         //@ts-ignore
                                 slides:slides,
-                                durationsBySlideId:durationsBySlideId,
+                                durationsBySlideId: durationsBySlideId || {},
                                 }} 
-                    durationInFrames={durationInFrames&&durationInFrames!==0? durationInFrames:30}
+                    durationInFrames={durationInFrames || (slides.length * fps * 8)}
                     compositionWidth={1280}
                     compositionHeight={720}
                     fps={30}

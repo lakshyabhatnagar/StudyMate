@@ -17,6 +17,7 @@ function CoursePreview() {
       : params.courseId?.[0];
 
   const [courseDetail, setCourseDetails] = useState<Course>();
+  const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
 
   useEffect(() => {
     if (courseId) {
@@ -24,28 +25,54 @@ function CoursePreview() {
     }
   }, [courseId]);
 
-  const GetCourseDetail = async () => {
+  const GetCourseDetail = async (skipAutoGeneration = false) => {
     const loadingToast = toast.loading("Loading Course Details...");
-    const result = await axios.get(
-      `/api/course?courseId=${encodeURIComponent(courseId!)}`
-    );
-    setCourseDetails(result.data);
-    toast.success("Course Details Loaded Successfully!",{id:loadingToast});
-    if(result?.data?.chapterContentSlide?.length ===0){
-      GenerateVideoContent(result?.data);
+    try {
+      const result = await axios.get(
+        `/api/course?courseId=${encodeURIComponent(courseId!)}`
+      );
+      setCourseDetails(result.data);
+      toast.success("Course Details Loaded Successfully!", { id: loadingToast });
+      
+      // Only generate video content if there are no existing slides AND not already generating AND not skipping auto-generation
+      if (result?.data?.chapterContentSlide?.length === 0 && !isGeneratingVideo && !skipAutoGeneration) {
+        GenerateVideoContent(result?.data);
+      }
+    } catch (error) {
+      console.error("Error fetching course details:", error);
+      toast.error("Failed to load course details", { id: loadingToast });
     }
   };
 
   const GenerateVideoContent = async (course: Course) => {
-    for (let i = 0; i < course.courseLayout.chapters.length; i++) {
-      if (i > 0) break;
-      const toastLoad = toast.loading("Generating Video Content for Chapter "+(i+1));
-      const result = await axios.post("/api/generate-video-content", {
-        chapter: course?.courseLayout.chapters[0],
-        courseId: course?.courseId,
-      });
-      console.log("Generated Video Content for chapter:", result.data);
-      toast.success("Video content generated", { id: toastLoad });
+    // Prevent multiple simultaneous generations
+    if (isGeneratingVideo) {
+      console.log("⚠️ Video generation already in progress, skipping...");
+      return;
+    }
+    
+    // Generate content for the first chapter only to avoid overwhelming the system
+    if (course.courseLayout.chapters.length > 0) {
+      setIsGeneratingVideo(true);
+      const toastLoad = toast.loading("Generating Video Content for Chapter 1");
+      try {
+        const result = await axios.post("/api/generate-video-content", {
+          chapter: course.courseLayout.chapters[0],
+          courseId: course.courseId,
+        });
+        console.log("Generated Video Content for chapter:", result.data);
+        toast.success("Video content generated for Chapter 1", { id: toastLoad });
+        
+        // Auto-refresh course data to show the new video content
+        console.log("🔄 Refreshing course data to show video content...");
+        await GetCourseDetail(true); // Skip auto-generation on refresh
+        
+      } catch (error) {
+        console.error("Error generating video content:", error);
+        toast.error("Failed to generate video content", { id: toastLoad });
+      } finally {
+        setIsGeneratingVideo(false);
+      }
     }
   };
         const fps=30;
@@ -55,20 +82,45 @@ function CoursePreview() {
         useEffect(()=>{
             let cancelled=false;
             const run=async()=>{
-                if(!slides) return;
+                if(!slides || slides.length === 0) return;
+                
                 const entries=await Promise.all(
                     slides.map(async(slide: any)=>{
-                        const audioData=await getAudioData(slide?.audioFileUrl);
-                        const audioSec=audioData?.durationInSeconds ?? 0;
-                        const frames=Math.max(1,Math.ceil(audioSec*fps));
-                        return [slide.slideId,frames] as const;
+                        try {
+                            if (!slide?.audioFileUrl || slide.audioFileUrl.length === 0) {
+                                return [slide.slideId, fps * 8] as const; // 8 seconds default
+                            }
+                            
+                            const audioData = await getAudioData(slide.audioFileUrl);
+                            const audioSec = audioData?.durationInSeconds ?? 0;
+                            
+                            // Ensure we have a valid number
+                            if (!Number.isFinite(audioSec) || audioSec <= 0) {
+                                return [slide.slideId, fps * 8] as const; // 8 seconds fallback
+                            }
+                            
+                            const frames = Math.max(fps * 2, Math.ceil(audioSec * fps)); // Minimum 2 seconds
+                            return [slide.slideId, frames] as const;
+                        } catch (error) {
+                            console.error(`Failed to get audio data for slide ${slide.slideId}:`, error);
+                            return [slide.slideId, fps * 8] as const; // 8 seconds fallback
+                        }
                     })
                 );
+                
                 if(!cancelled){
-                    setDurationsBySlideId(Object.fromEntries(entries));
+                    const durationsObject = Object.fromEntries(entries);
+                    // Double-check all values are valid numbers
+                    const validDurations: Record<string, number> = {};
+                    for (const [key, value] of Object.entries(durationsObject)) {
+                        validDurations[key] = (Number.isFinite(value) && (value as number) > 0) 
+                            ? (value as number) 
+                            : fps * 8;
+                    }
+                    setDurationsBySlideId(validDurations);
                 }
             };
-            run();
+            run().catch(console.error);
             return ()=>{cancelled=true;}
         },[slides,fps]);
 

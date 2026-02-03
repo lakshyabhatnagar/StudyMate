@@ -3,12 +3,12 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useUser } from "@clerk/nextjs";
 import axios from "axios";
-import { UserDetailContext } from "@/context/UserDetailContext";
+import { UserDetailContext, UserDetail, UserDetailContextType } from "@/context/UserDetailContext";
 import Header from "./_components/Header";
 
 function Provider({ children }: { children: React.ReactNode }) {
   const { isLoaded, isSignedIn } = useUser();
-  const [userDetail, setUserDetail] = useState<any>(null);
+  const [userDetail, setUserDetail] = useState<UserDetail | null>(null);
 
   const createNewUser = useCallback(async () => {
     try {
@@ -24,8 +24,13 @@ function Provider({ children }: { children: React.ReactNode }) {
     createNewUser();
   }, [isLoaded, isSignedIn, userDetail, createNewUser]);
 
+  const contextValue: UserDetailContextType = {
+    userDetail,
+    setUserDetail,
+  };
+
   return (
-    <UserDetailContext.Provider value={{ userDetail, setUserDetail }}>
+    <UserDetailContext.Provider value={contextValue}>
       <div className="max-w-7xl mx-auto">
         <Header />
         {children}

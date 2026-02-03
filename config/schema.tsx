@@ -1,4 +1,3 @@
-import { id } from "date-fns/locale";
 import { integer, json, pgTable, text, timestamp, varchar } from "drizzle-orm/pg-core";
 
 export const usersTable = pgTable("users", {

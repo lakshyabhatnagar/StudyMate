@@ -13,6 +13,16 @@
 # testing
 /coverage
 
+# testing scripts and utilities
+/scripts/test-db.ts
+/scripts/test-*.ts
+/test/
+/tests/
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx
+
 # next.js
 /.next/
 /out/
