@@ -1,12 +1,12 @@
 # 🎓 StudyMate - AI-Powered Course Creation Platform
 
-![StudyMate Logo](https://study-mate-q1sbtn7hr-lakshyas-projects-619d1e13.vercel.app/logo.png)
+![StudyMate Logo](https://study-mate-odd9xoz9z-lakshyas-projects-619d1e13.vercel.app)
 
 **StudyMate** is a revolutionary AI-powered educational platform that transforms any topic into comprehensive, interactive video courses in minutes. Built with cutting-edge AI technology and modern web frameworks.
 
 ## 🚀 Live Demo
 
-**🌐 [Visit StudyMate Live](https://study-mate-q1sbtn7hr-lakshyas-projects-619d1e13.vercel.app/)**
+**🌐 [Visit StudyMate Live](https://study-mate-odd9xoz9z-lakshyas-projects-619d1e13.vercel.app)**
 
 ## ✨ Features
 
