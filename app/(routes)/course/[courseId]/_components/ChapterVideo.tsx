@@ -131,17 +131,21 @@ export const CourseComposition = ({ slides, durationsBySlideId }: Props) => {
   const GAP_FRAMES = Math.round(GAP_SECONDS * fps);
 
   const timeline = useMemo(() => {
+    if (slides.length === 0) {
+      return [];
+    }
+
     let from = 0;
 
-    return slides.map((slide) => {
-      const dur =
-        durationsBySlideId[slide.slideId] ?? Math.ceil(6 * fps);
+    const result = slides.map((slide) => {
+      const dur = durationsBySlideId[slide.slideId] ?? Math.ceil(8 * fps); // 8 seconds fallback
 
       const item = { slide, from, dur };
-
       from += dur + GAP_FRAMES;
       return item;
     });
+
+    return result;
   }, [slides, durationsBySlideId, fps]);
 
   return (

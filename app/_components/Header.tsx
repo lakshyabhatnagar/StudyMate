@@ -32,10 +32,28 @@ function Header() {
 
           <li>
             <Link
+              href="/features"
+              className="text-lg font-medium hover:text-[#3EACA3] transition-colors"
+            >
+              Features
+            </Link>
+          </li>
+
+          <li>
+            <Link
               href="/pricing"
               className="text-lg font-medium hover:text-[#3EACA3] transition-colors"
             >
               Pricing
+            </Link>
+          </li>
+
+          <li>
+            <Link
+              href="/about"
+              className="text-lg font-medium hover:text-[#3EACA3] transition-colors"
+            >
+              About
             </Link>
           </li>
         </ul>

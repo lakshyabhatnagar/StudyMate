@@ -8,6 +8,7 @@ import { VideoSlidesDummy } from "@/data/Dummy";
 import { db } from "@/config/db";
 import { chapterContentSlides } from "@/config/schema";
 import { and, eq } from "drizzle-orm";
+import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 
 
 /* ---------- helper: safely extract JSON ---------- */
@@ -49,7 +50,7 @@ export async function POST(req: NextRequest) {
 
     /* ---------- Gemini: generate video JSON ---------- */
     const model = genAI.getGenerativeModel({
-      model: "gemini-2.5-flash",
+      model: "gemini-2.5-flash", // Changed back - this was working correctly
     });
 
     const aiResult = await model.generateContent(
@@ -80,85 +81,186 @@ export async function POST(req: NextRequest) {
       );
     }
  
-    /* ---------- Audio generation + S3 upload ---------- */
-    let audioFileUrls: string[] = [];  
-
-    for (let i = 0; i < VideoContentJson.length; i++) {     
-      // if (i > 0) break; // testing guard
-
-        let narration =
-        VideoContentJson[i]?.narration?.fullText ?? "";
-        const MAX_CHARS = 400;
-        if (narration.length > MAX_CHARS) {
-        narration = narration.slice(0, MAX_CHARS);
-        }
-
-
-      if (!narration) continue;
-
-      const fonadaResult = await axios.post(
-        "https://api.fonada.ai/tts/generate-audio-large",
-        {
-          input: narration,
-          voice: "Vaanee",
-          language: "English",
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${process.env.FONADA_API_KEY}`,
-          },
-          responseType: "arraybuffer",
-          timeout: 120000,
-        }
-      );
-
-      const audioBuffer = Buffer.from(fonadaResult.data);
-
-      const fileName =
-        VideoContentJson[i]?.audioFileName ??
-        `chapter-${i}-audio`;
-
-      const audioUrl = await saveAudioToS3(
-        audioBuffer,
-        fileName
-      );
-
-      audioFileUrls.push(audioUrl);
-    }                                   
+    /* ---------- ElevenLabs TTS: generate audio files ---------- */
+    console.log("🎵 Starting audio generation with ElevenLabs...");
     
-    let captionsArray: any[]=[];
-    for(let i=0;i<audioFileUrls.length;i++){
-        const captions=await GenerateCaptions(audioFileUrls[i]);
-        console.log("Captions for audio ",i,": ",captions);
-        captionsArray.push(captions);
+    // Verify API key is available
+    if (!process.env.ELEVENLABS_API_KEY) {
+      throw new Error("ELEVENLABS_API_KEY environment variable is not set");
     }
+    console.log("✅ ElevenLabs API key found");
+    
+    // Initialize ElevenLabs client
+    const elevenlabs = new ElevenLabsClient({
+      apiKey: process.env.ELEVENLABS_API_KEY,
+    });
+    
+    const audioFileUrls: string[] = [];
+    
+    for (let i = 0; i < VideoContentJson.length; i++) {
+      const slide = VideoContentJson[i];
+      let narration = slide?.narration?.fullText ?? slide?.narration ?? "";
+      
+      if (!narration) {
+        console.log(`⚠️ No narration for slide ${i + 1}, skipping audio generation`);
+        audioFileUrls.push("");
+        continue;
+      }
 
-    //Save everything to Database
-        for (let index = 0; index < VideoContentJson.length; index++) {
-        const slide = VideoContentJson[index];
-        await db
-        .delete(chapterContentSlides)
-        .where(
-          and(
-            eq(chapterContentSlides.courseId, courseId),
-            eq(chapterContentSlides.chapterId, chapter.chapterId)
-          )
+      console.log(`🎵 Generating audio ${i + 1}/${VideoContentJson.length}...`);
+      console.log(`📝 Narration text (${narration.length} chars):`, narration.substring(0, 100) + "...");
+
+      // Rate limiting: ElevenLabs has generous limits, but still be conservative 
+      if (i > 0) {
+        console.log("⏳ Waiting 2 seconds between requests...");
+        await new Promise(resolve => setTimeout(resolve, 2000)); // 2 seconds between requests
+      }
+
+      try {
+        const audio = await elevenlabs.textToSpeech.convert(
+          'JBFqnCBsd6RMkjVDRZzb', // Default voice_id - you can change this
+          {
+            text: narration,
+            modelId: 'eleven_multilingual_v2',
+            outputFormat: 'mp3_44100_128',
+          }
         );
 
-        await db.insert(chapterContentSlides).values({
-            courseId: courseId,
-            chapterId: chapter.chapterId,
-            slideId: slide.slideId,
-            slideIndex: slide.slideIndex,
-            audioFileName: slide.audioFileName,
-            narration: slide.narration,
-            html: slide.html,
-            revelData: slide.revelData,
-            caption: captionsArray?.[index] ?? null,
-            audioFileUrl: audioFileUrls[index] ?? null,
+        // Convert the audio stream to buffer
+        const chunks: Uint8Array[] = [];
+        const reader = audio.getReader();
+        
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            chunks.push(value);
+          }
+        } finally {
+          reader.releaseLock();
+        }
+        
+        const audioBuffer = Buffer.concat(chunks.map(chunk => Buffer.from(chunk)));
+        const fileName = VideoContentJson[i]?.audioFileName ?? `chapter-${i}-audio`;
+        const audioUrl = await saveAudioToS3(audioBuffer, fileName);
+        audioFileUrls.push(audioUrl);
+        console.log(`✅ Audio ${i + 1} generated successfully`);
+        
+      } catch (error: any) {
+        console.error(`❌ Failed to generate audio ${i + 1}:`, {
+          message: error.message,
+          status: error.response?.status,
+          statusText: error.response?.statusText,
         });
-}
+        
+        if (error.response?.status === 429) {
+          console.log("⏳ Rate limited, waiting 60 seconds before retry...");
+          await new Promise(resolve => setTimeout(resolve, 60000)); // Wait 1 minute
+          
+          // Retry once
+          try {
+            const audio = await elevenlabs.textToSpeech.convert(
+              'JBFqnCBsd6RMkjVDRZzb',
+              {
+                text: narration,
+                modelId: 'eleven_multilingual_v2',
+                outputFormat: 'mp3_44100_128',
+              }
+            );
 
+            // Convert the audio stream to buffer
+            const chunks: Uint8Array[] = [];
+            const reader = audio.getReader();
+            
+            try {
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                chunks.push(value);
+              }
+            } finally {
+              reader.releaseLock();
+            }
+            
+            const audioBuffer = Buffer.concat(chunks.map(chunk => Buffer.from(chunk)));
+            const fileName = VideoContentJson[i]?.audioFileName ?? `chapter-${i}-audio`;
+            const audioUrl = await saveAudioToS3(audioBuffer, fileName);
+            audioFileUrls.push(audioUrl);
+            console.log(`✅ Audio ${i + 1} generated successfully (retry)`);
+            
+          } catch (retryError) {
+            console.error(`❌ Retry failed for audio ${i + 1}:`, retryError);
+            audioFileUrls.push("");
+          }
+        } else {
+          // For other errors, push empty string to maintain indexes
+          audioFileUrls.push("");
+        }
+      }
+    }
+
+    /* ---------- AssemblyAI: generate captions ---------- */
+    console.log("📝 Starting caption generation...");
+    const captionsArray: any[] = [];
+    
+    for(let i = 0; i < audioFileUrls.length; i++){
+      if (!audioFileUrls[i]) {
+        console.log(`⚠️ No audio file for slide ${i + 1}, skipping caption generation`);
+        captionsArray.push(null);
+        continue;
+      }
+      
+      console.log(`📝 Generating captions ${i + 1}/${audioFileUrls.length}...`);
+      
+      try {
+        const captions = await GenerateCaptions(audioFileUrls[i]);
+        console.log(`✅ Captions generated for audio ${i + 1}`);
+        captionsArray.push(captions);
+      } catch (error) {
+        console.error(`❌ Failed to generate captions for audio ${i + 1}:`, error);
+        captionsArray.push(null);
+      }
+      
+      // Add delay between caption requests
+      if (i < audioFileUrls.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+    }
+
+    /* ---------- Database: save everything ---------- */
+    console.log("💾 Saving to database...");
+    
+    // Delete existing slides for this chapter once before inserting new ones
+    await db
+      .delete(chapterContentSlides)
+      .where(
+        and(
+          eq(chapterContentSlides.courseId, courseId),
+          eq(chapterContentSlides.chapterId, chapter.chapterId)
+        )
+      );
+    
+    // Insert all new slide data with guaranteed unique slideIds
+    for (let index = 0; index < VideoContentJson.length; index++) {
+      const slide = VideoContentJson[index];
+      
+      // Generate guaranteed unique slideId using timestamp and index
+      const uniqueSlideId = `${chapter.chapterId}-slide-${index + 1}-${Date.now()}`;
+      
+      // Insert new slide data - ensuring all NOT NULL constraints are met
+      await db.insert(chapterContentSlides).values({
+        courseId: courseId,
+        chapterId: chapter.chapterId,
+        slideId: uniqueSlideId, // Guaranteed unique slideId
+        slideIndex: slide.slideIndex || (index + 1), // Ensure slideIndex exists
+        audioFileName: slide.audioFileName || `${chapter.chapterId}-${index + 1}.mp3`, // NOT NULL constraint
+        narration: slide.narration || { fullText: "" }, // NOT NULL constraint - ensure JSON object
+        html: slide.html || "<p>No content available</p>", // NOT NULL constraint
+        revelData: slide.revelData || [], // NOT NULL constraint - ensure JSON array
+        caption: captionsArray?.[index] ?? null, // Can be null
+        audioFileUrl: audioFileUrls[index] ?? null, // Can be null
+      });
+    }
 
     /* ---------- response ---------- */
     console.log("✅ VIDEO PIPELINE COMPLETE", {
@@ -172,6 +274,7 @@ export async function POST(req: NextRequest) {
       audioFileUrls,
       captionsArray
     });
+    
   } catch (err: any) {
     console.error("generate-video-content error:", err);
     return NextResponse.json(
@@ -249,3 +352,31 @@ export async function GenerateCaptions(audioUrl: string) {
     await new Promise((resolve) => setTimeout(resolve, 3000));
   }
 }
+
+/* ---------- ARCHIVED: Fonada Implementation ---------- */
+/*
+// Old Fonada TTS implementation - commented out for reference
+// Had issues with concurrent request limits (40/40) causing hangs
+
+const fonadaResult = await axios.post(
+  "https://api.fonada.ai/tts/generate-audio-large",
+  {
+    input: narration,
+    voice: "Vaanee", 
+    language: "English",
+  },
+  {
+    headers: {
+      Authorization: `Bearer ${process.env.FONADA_API_KEY}`,
+    },
+    responseType: "arraybuffer",
+    timeout: 45000,
+  }
+);
+
+// Issues encountered:
+// - 40 concurrent request limit caused zombie requests
+// - Rate limit: 10 per minute, 100 per hour, 1000 per day
+// - Required 30+ second delays between requests
+// - Account-wide concurrent limits not cleared by new API keys
+*/

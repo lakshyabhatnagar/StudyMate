@@ -50,7 +50,6 @@ function Hero() {
         toast.success("Course layout generated successfully!", {id:toastId}); 
         setLoading(false);
         router.push(`/course/${courseID}`);
-        console.log("Course Layout Generated:", result.data);
     } catch (err) {
         console.error(err);
         toast.error("Failed to generate course");

@@ -6,6 +6,7 @@ import {
 import "./globals.css";
 import Provider from "./provider";
 import { Toaster } from "@/components/ui/sonner";
+import Footer from "@/components/Footer";
 
 const AppFont=Poppins({
   subsets: ["latin"],
@@ -26,9 +27,12 @@ export default function RootLayout({
   return (
     <ClerkProvider>
       <html lang="en">
-        <body className={AppFont.className}>
+        <body className={`${AppFont.className} flex flex-col min-h-screen`}>
           <Provider>
-            {children}
+            <main className="flex-1">
+              {children}
+            </main>
+            <Footer />
             <Toaster position="top-center" richColors />
           </Provider>
         </body>

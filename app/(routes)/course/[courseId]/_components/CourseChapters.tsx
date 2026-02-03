@@ -14,7 +14,7 @@ function CourseChapters({course, durationsBySlideId}:Props) {
 
     const slides=course?.chapterContentSlide??[];
     const GetChapterDurationInFrame = (chapterId: string) => {
-        if (!durationsBySlideId || !course) return 1;
+        if (!durationsBySlideId || !course) return 180; // 6 seconds fallback
 
         const playableSlides = course.chapterContentSlide.filter(
             (slide) =>
@@ -23,22 +23,25 @@ function CourseChapters({course, durationsBySlideId}:Props) {
             slide.audioFileUrl.length > 0
         );
 
-        if (playableSlides.length === 0) return 1;
+        if (playableSlides.length === 0) return 180; // 6 seconds fallback
 
         let total = 0;
 
         for (const slide of playableSlides) {
             const dur = durationsBySlideId[slide.slideId];
 
-            // ⛔ absolutely forbid NaN
+            // ⛔ absolutely forbid NaN and ensure we have a valid number
             if (typeof dur !== "number" || !Number.isFinite(dur) || dur <= 0) {
-            total += 180; // 6s fallback
+                total += 180; // 6s fallback
             } else {
-            total += dur;
+                total += dur;
             }
         }
 
-        return Math.max(1, total);
+        const result = Math.max(1, total);
+        
+        // Final safety check - ensure result is never NaN
+        return Number.isFinite(result) ? result : 180;
     };
 
 
@@ -75,23 +78,29 @@ function CourseChapters({course, durationsBySlideId}:Props) {
                                 ))}
                             </div>
                             <div className='overflow-hidden'>
-                                <Player
-                                    component={CourseComposition}
-                                    inputProps={{
-                                        slides:slides.filter((slide) =>slide.chapterId === chapter.chapterId && slide.audioFileUrl && slide.audioFileUrl.length > 0),
-                                        durationsBySlideId:durationsBySlideId??{},
-                                    }}  
-                                    durationInFrames={GetChapterDurationInFrame(chapter?.chapterId)}
-                                    compositionWidth={1280}
-                                    compositionHeight={720}
-                                    fps={30}
-                                    controls
-                                    style={{
-                                        width: '80%',
-                                        height: '180px',
-                                        aspectRatio:'16/9',
-                                    }} 
-                                />
+                                {durationsBySlideId ? (
+                                    <Player
+                                        component={CourseComposition}
+                                        inputProps={{
+                                            slides:slides.filter((slide) =>slide.chapterId === chapter.chapterId && slide.audioFileUrl && slide.audioFileUrl.length > 0),
+                                            durationsBySlideId:durationsBySlideId,
+                                        }}  
+                                        durationInFrames={GetChapterDurationInFrame(chapter?.chapterId)}
+                                        compositionWidth={1280}
+                                        compositionHeight={720}
+                                        fps={30}
+                                        controls
+                                        style={{
+                                            width: '80%',
+                                            height: '180px',
+                                            aspectRatio:'16/9',
+                                        }} 
+                                    />
+                                ) : (
+                                    <div className="bg-gray-200 rounded-lg h-45 flex items-center justify-center">
+                                        <p className="text-gray-500">Loading video...</p>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </CardContent>

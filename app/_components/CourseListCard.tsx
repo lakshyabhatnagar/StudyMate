@@ -1,7 +1,8 @@
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Course } from '@/type/CourseType'
-import { Calendar, Dot, Layers, Link, Play } from 'lucide-react'
+import { Calendar, Dot, Layers, Play } from 'lucide-react'
+import Link from 'next/link'
 import React from 'react'
 import moment from 'moment'
 
@@ -21,7 +22,7 @@ function CourseListCard({courseItem}:Props) {
 
                 <span className="shrink-0 text-xs font-medium px-3 py-1 rounded-full
                                 bg-primary/10 text-primary border border-primary/20">
-                    {courseItem?.courseLayout?.level}
+                    {courseItem?.courseLayout?.level || 'Beginner'}
                 </span>
                 </div>
 
@@ -30,7 +31,7 @@ function CourseListCard({courseItem}:Props) {
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full
                                 bg-slate-100 border border-slate-200">
                     <Layers className="h-3.5 w-3.5" />
-                    {courseItem?.courseLayout?.totalChapters} Chapters
+                    {courseItem?.courseLayout?.totalChapters || 0} Chapters
                 </span>
 
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full
