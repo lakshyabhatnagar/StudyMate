@@ -64,7 +64,8 @@ export async function GET(req: NextRequest) {
       }
 
       const chapterContentSlide = await db.select().from(chapterContentSlides)
-        .where(eq(chapterContentSlides.courseId, courseId)); 
+        .where(eq(chapterContentSlides.courseId, courseId))
+        .orderBy(chapterContentSlides.slideIndex); 
 
       const course = courses[0];
 
