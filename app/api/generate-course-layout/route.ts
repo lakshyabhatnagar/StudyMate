@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
 
     // === GEMINI AI ===
     const model = genAI.getGenerativeModel({
-      model: "gemini-2.5-flash", 
+      model: "gemini-3-flash-preview", 
     });
     
     const aiResult = await model.generateContent(

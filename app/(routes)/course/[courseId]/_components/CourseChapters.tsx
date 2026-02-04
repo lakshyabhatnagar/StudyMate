@@ -13,6 +13,7 @@ type Props={
 function CourseChapters({course, durationsBySlideId}:Props) {
 
     const slides=course?.chapterContentSlide??[];
+    
     const GetChapterDurationInFrame = (chapterId: string) => {
         if (!durationsBySlideId || !course) return 180; // 6 seconds fallback
 
@@ -82,8 +83,12 @@ function CourseChapters({course, durationsBySlideId}:Props) {
                                     <Player
                                         component={CourseComposition}
                                         inputProps={{
-                                            slides:slides.filter((slide) =>slide.chapterId === chapter.chapterId && slide.audioFileUrl && slide.audioFileUrl.length > 0),
-                                            durationsBySlideId:durationsBySlideId,
+                                            slides: slides.filter((slide) => 
+                                                slide.chapterId === chapter.chapterId && 
+                                                slide.audioFileUrl && 
+                                                slide.audioFileUrl.length > 0
+                                            ),
+                                            durationsBySlideId: durationsBySlideId,
                                         }}  
                                         durationInFrames={GetChapterDurationInFrame(chapter?.chapterId)}
                                         compositionWidth={1280}

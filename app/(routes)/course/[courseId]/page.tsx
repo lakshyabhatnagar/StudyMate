@@ -18,6 +18,7 @@ function CoursePreview() {
 
   const [courseDetail, setCourseDetails] = useState<Course>();
   const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
+  const [generationProgress, setGenerationProgress] = useState(0);
 
   useEffect(() => {
     if (courseId) {
@@ -34,9 +35,18 @@ function CoursePreview() {
       setCourseDetails(result.data);
       toast.success("Course Details Loaded Successfully!", { id: loadingToast });
       
-      // Only generate video content if there are no existing slides AND not already generating AND not skipping auto-generation
-      if (result?.data?.chapterContentSlide?.length === 0 && !isGeneratingVideo && !skipAutoGeneration) {
+      // Check if first chapter already has slides
+      const firstChapter = result?.data?.courseLayout?.chapters?.[0];
+      const firstChapterHasSlides = result?.data?.chapterContentSlide?.some(
+        (slide: any) => slide.chapterId === firstChapter?.chapterId
+      );
+      
+      // Only generate video content if first chapter has no slides AND not already generating AND not skipping auto-generation
+      if (!firstChapterHasSlides && !isGeneratingVideo && !skipAutoGeneration && firstChapter) {
+        console.log("🎬 No slides found for first chapter, generating video content...");
         GenerateVideoContent(result?.data);
+      } else if (firstChapterHasSlides) {
+        console.log("✅ First chapter already has slides, skipping video generation");
       }
     } catch (error) {
       console.error("Error fetching course details:", error);
@@ -74,6 +84,63 @@ function CoursePreview() {
         setIsGeneratingVideo(false);
       }
     }
+  };
+
+  const GenerateAllChaptersVideo = async () => {
+    if (!courseDetail || isGeneratingVideo) {
+      toast.error("Please wait for current generation to complete");
+      return;
+    }
+
+    setIsGeneratingVideo(true);
+    setGenerationProgress(0);
+    const totalChapters = courseDetail.courseLayout.chapters.length;
+    let chaptersProcessed = 0;
+    
+    for (let i = 0; i < totalChapters; i++) {
+      const chapter = courseDetail.courseLayout.chapters[i];
+      
+      // Check if this chapter already has slides
+      const chapterHasSlides = courseDetail.chapterContentSlide?.some(
+        (slide: any) => slide.chapterId === chapter.chapterId
+      );
+
+      if (chapterHasSlides) {
+        console.log(`✅ Chapter ${i + 1} already has slides, skipping...`);
+        chaptersProcessed++;
+        setGenerationProgress(Math.round((chaptersProcessed / totalChapters) * 100));
+        continue;
+      }
+
+      const toastLoad = toast.loading(`Generating Video Content for Chapter ${i + 1} of ${totalChapters}`);
+      
+      try {
+        console.log(`🎬 Generating video for Chapter ${i + 1}: ${chapter.chapterTitle}`);
+        const result = await axios.post("/api/generate-video-content", {
+          chapter: chapter,
+          courseId: courseDetail.courseId,
+        });
+        
+        console.log(`✅ Generated Video Content for chapter ${i + 1}:`, result.data);
+        toast.success(`Video content generated for Chapter ${i + 1}`, { id: toastLoad });
+        
+      } catch (error: any) {
+        console.error(`❌ Error generating video content for chapter ${i + 1}:`, error);
+        toast.error(`Failed to generate video for Chapter ${i + 1}: ${error.message}`, { id: toastLoad });
+        // Continue with next chapter even if one fails
+      }
+      
+      chaptersProcessed++;
+      setGenerationProgress(Math.round((chaptersProcessed / totalChapters) * 100));
+    }
+
+    setIsGeneratingVideo(false);
+    setGenerationProgress(0);
+    
+    // Refresh course data to show all new video content
+    const refreshToast = toast.loading("Refreshing course data...");
+    await GetCourseDetail(true);
+    toast.success("All chapters processed!", { id: refreshToast });
   };
         const fps=30;
         const slides=courseDetail?.chapterContentSlide??[];
@@ -127,6 +194,54 @@ function CoursePreview() {
   return (
     <div className="flex flex-col items-center">
       <CourseInfoCard course={courseDetail} durationsBySlideId={durationsBySlideId} />
+      
+      {/* Generate All Chapters Button */}
+      {courseDetail && (
+        <>
+          {/* Show button only if there are chapters without slides */}
+          {courseDetail.chapterContentSlide?.length < courseDetail.courseLayout.chapters.length * 2 && (
+            <div className="my-4 w-full max-w-md">
+              <div className="flex flex-col gap-2">
+                {/* Progress Bar - shows when generating */}
+                {isGeneratingVideo && (
+                  <div className="w-full">
+                    <div className="relative pt-1">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium inline-block text-[#3EACA3]">
+                          Generating Videos
+                        </span>
+                        <span className="text-sm font-semibold inline-block text-[#3EACA3]">
+                          {generationProgress}%
+                        </span>
+                      </div>
+                      <div className="overflow-hidden h-3 text-xs flex rounded-full bg-gray-200">
+                        <div
+                          style={{ width: `${generationProgress}%` }}
+                          className="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-[#3EACA3] transition-all duration-500 rounded-full"
+                        ></div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Button */}
+                <button
+                  onClick={GenerateAllChaptersVideo}
+                  disabled={isGeneratingVideo}
+                  className={`w-full px-6 py-3 rounded-lg text-white transition-all ${
+                    isGeneratingVideo 
+                      ? 'bg-gray-400 cursor-not-allowed' 
+                      : 'bg-[#3EACA3] hover:bg-[#359991] shadow-md hover:shadow-lg'
+                  }`}
+                >
+                  {isGeneratingVideo ? 'Generating Videos...' : 'Generate Remaining Videos'}
+                </button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+      
       <CourseChapters course={courseDetail} durationsBySlideId={durationsBySlideId} />
     </div>
   );

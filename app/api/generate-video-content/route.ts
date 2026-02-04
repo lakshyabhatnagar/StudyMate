@@ -11,76 +11,54 @@ import { and, eq } from "drizzle-orm";
 import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 
 
-/* ---------- helper: safely extract JSON ---------- */
-
-function extractJSON(text: string) {
-  const cleaned = text
-    .trim()
-    .replace(/^```json/, "")
-    .replace(/^```/, "")
-    .replace(/```$/, "")
-    .trim();
-
-  const firstBrace = cleaned.indexOf("{");
-  const lastBrace = cleaned.lastIndexOf("}");
-  const firstBracket = cleaned.indexOf("[");
-  const lastBracket = cleaned.lastIndexOf("]");
-
-  if (
-    firstBracket !== -1 &&
-    lastBracket !== -1 &&
-    (firstBrace === -1 || firstBracket < firstBrace)
-  ) {
-    return cleaned.slice(firstBracket, lastBracket + 1);
-  }
-
-  if (firstBrace !== -1 && lastBrace !== -1) {
-    return cleaned.slice(firstBrace, lastBrace + 1);
-  }
-
-  throw new Error("No JSON found");
-}
-
-
 /* ---------- route ---------- */
 export async function POST(req: NextRequest) {
   try {
-    const { chapter,courseId } = await req.json();
+    const { chapter, courseId } = await req.json();
     console.log("Generating video content for chapter:", chapter);
 
-    /* ---------- Gemini: generate video JSON ---------- */
-    const model = genAI.getGenerativeModel({
-      model: "gemini-2.5-flash", // Changed back - this was working correctly
-    });
+    /* ---------- REMOVED: Gemini call - using existing chapter data ---------- */
+    // No more Gemini call here - we already have the chapter structure!
+    
+    // Use the chapter data directly to create slides from subContent
+    const VideoContentJson = chapter.subContent.map((content: string, index: number) => ({
+      slideId: `${chapter.chapterId}-slide-${index + 1}`,
+      slideIndex: index + 1,
+      title: chapter.chapterTitle,
+      subtitle: content,
+      audioFileName: `${chapter.chapterId}-${String(index + 1).padStart(2, '0')}.mp3`,
+      narration: {
+        fullText: `${chapter.chapterTitle}: ${content}. Let's explore this important concept in detail.`
+      },
+      html: `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${chapter.chapterTitle}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="font-sans antialiased text-white">
+  <div class="relative w-[1280px] h-[720px] overflow-hidden bg-gradient-to-br from-gray-900 to-gray-800 p-16 flex flex-col justify-between">
+    <header class="absolute top-8 left-16 right-16 flex justify-between items-baseline text-lg font-light text-gray-400">
+      <span class="text-xl font-semibold text-gray-200">StudyMate Course</span>
+      <span>Chapter ${index + 1}</span>
+    </header>
+    <main class="flex-grow flex flex-col justify-center items-center text-center">
+      <h1 class="text-6xl font-extrabold mb-4 text-white drop-shadow-lg">${chapter.chapterTitle}</h1>
+      <h2 class="text-3xl font-light text-gray-300 mb-16">${content}</h2>
+      <div class="space-y-8 max-w-4xl mx-auto text-left">
+        <div class="p-6 bg-gray-700/50 backdrop-blur-sm rounded-lg shadow-xl" data-reveal="r1">
+          <p class="text-xl font-medium text-cyan-400">${content}</p>
+        </div>
+      </div>
+    </main>
+  </div>
+</body>
+</html>`,
+      revelData: ["r1"]
+    }));
 
-    const aiResult = await model.generateContent(
-      Generate_Video_Prompt +
-        "\n\nChapter Details are " +
-        JSON.stringify(chapter)
-    );
-
-    const raw =
-      aiResult.response.candidates?.[0]?.content?.parts?.[0]?.text;
-
-
-    if (!raw) {
-      return NextResponse.json(
-        { error: "Empty AI response" },
-        { status: 422 }
-      );
-    }
-
-    let VideoContentJson;
-    try {
-      VideoContentJson = JSON.parse(extractJSON(raw));
-    } catch {
-      console.error("Invalid AI JSON:", raw);
-      return NextResponse.json(
-        { error: "AI returned invalid JSON" },
-        { status: 422 }
-      );
-    }
- 
     /* ---------- ElevenLabs TTS: generate audio files ---------- */
     console.log("🎵 Starting audio generation with ElevenLabs...");
     
@@ -108,17 +86,16 @@ export async function POST(req: NextRequest) {
       }
 
       console.log(`🎵 Generating audio ${i + 1}/${VideoContentJson.length}...`);
-      console.log(`📝 Narration text (${narration.length} chars):`, narration.substring(0, 100) + "...");
 
-      // Rate limiting: ElevenLabs has generous limits, but still be conservative 
+      // Rate limiting: 2 seconds between requests
       if (i > 0) {
         console.log("⏳ Waiting 2 seconds between requests...");
-        await new Promise(resolve => setTimeout(resolve, 2000)); // 2 seconds between requests
+        await new Promise(resolve => setTimeout(resolve, 2000));
       }
 
       try {
         const audio = await elevenlabs.textToSpeech.convert(
-          'JBFqnCBsd6RMkjVDRZzb', // Default voice_id - you can change this
+          'JBFqnCBsd6RMkjVDRZzb',
           {
             text: narration,
             modelId: 'eleven_multilingual_v2',
@@ -147,55 +124,8 @@ export async function POST(req: NextRequest) {
         console.log(`✅ Audio ${i + 1} generated successfully`);
         
       } catch (error: any) {
-        console.error(`❌ Failed to generate audio ${i + 1}:`, {
-          message: error.message,
-          status: error.response?.status,
-          statusText: error.response?.statusText,
-        });
-        
-        if (error.response?.status === 429) {
-          console.log("⏳ Rate limited, waiting 60 seconds before retry...");
-          await new Promise(resolve => setTimeout(resolve, 60000)); // Wait 1 minute
-          
-          // Retry once
-          try {
-            const audio = await elevenlabs.textToSpeech.convert(
-              'JBFqnCBsd6RMkjVDRZzb',
-              {
-                text: narration,
-                modelId: 'eleven_multilingual_v2',
-                outputFormat: 'mp3_44100_128',
-              }
-            );
-
-            // Convert the audio stream to buffer
-            const chunks: Uint8Array[] = [];
-            const reader = audio.getReader();
-            
-            try {
-              while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                chunks.push(value);
-              }
-            } finally {
-              reader.releaseLock();
-            }
-            
-            const audioBuffer = Buffer.concat(chunks.map(chunk => Buffer.from(chunk)));
-            const fileName = VideoContentJson[i]?.audioFileName ?? `chapter-${i}-audio`;
-            const audioUrl = await saveAudioToS3(audioBuffer, fileName);
-            audioFileUrls.push(audioUrl);
-            console.log(`✅ Audio ${i + 1} generated successfully (retry)`);
-            
-          } catch (retryError) {
-            console.error(`❌ Retry failed for audio ${i + 1}:`, retryError);
-            audioFileUrls.push("");
-          }
-        } else {
-          // For other errors, push empty string to maintain indexes
-          audioFileUrls.push("");
-        }
+        console.error(`❌ Failed to generate audio ${i + 1}:`, error);
+        audioFileUrls.push("");
       }
     }
 
@@ -221,7 +151,6 @@ export async function POST(req: NextRequest) {
         captionsArray.push(null);
       }
       
-      // Add delay between caption requests
       if (i < audioFileUrls.length - 1) {
         await new Promise(resolve => setTimeout(resolve, 2000));
       }
@@ -230,8 +159,9 @@ export async function POST(req: NextRequest) {
     /* ---------- Database: save everything ---------- */
     console.log("💾 Saving to database...");
     
-    // Delete existing slides for this chapter once before inserting new ones
-    await db
+    // Delete existing slides for this chapter (this prevents duplicates)
+    console.log(`🗑️ Clearing existing slides for chapter: ${chapter.chapterId}`);
+    const deleteResult = await db
       .delete(chapterContentSlides)
       .where(
         and(
@@ -239,35 +169,30 @@ export async function POST(req: NextRequest) {
           eq(chapterContentSlides.chapterId, chapter.chapterId)
         )
       );
+    console.log(`✅ Deleted old slides for chapter ${chapter.chapterId}`);
     
-    // Insert all new slide data with guaranteed unique slideIds
     for (let index = 0; index < VideoContentJson.length; index++) {
       const slide = VideoContentJson[index];
+      // Use consistent slideId without timestamp to prevent duplicates
+      const uniqueSlideId = `${chapter.chapterId}-slide-${index + 1}`;
       
-      // Generate guaranteed unique slideId using timestamp and index
-      const uniqueSlideId = `${chapter.chapterId}-slide-${index + 1}-${Date.now()}`;
+      console.log(`💾 Inserting slide ${index + 1}/${VideoContentJson.length}:`, uniqueSlideId);
       
-      // Insert new slide data - ensuring all NOT NULL constraints are met
       await db.insert(chapterContentSlides).values({
         courseId: courseId,
         chapterId: chapter.chapterId,
-        slideId: uniqueSlideId, // Guaranteed unique slideId
-        slideIndex: slide.slideIndex || (index + 1), // Ensure slideIndex exists
-        audioFileName: slide.audioFileName || `${chapter.chapterId}-${index + 1}.mp3`, // NOT NULL constraint
-        narration: slide.narration || { fullText: "" }, // NOT NULL constraint - ensure JSON object
-        html: slide.html || "<p>No content available</p>", // NOT NULL constraint
-        revelData: slide.revelData || [], // NOT NULL constraint - ensure JSON array
-        caption: captionsArray?.[index] ?? null, // Can be null
-        audioFileUrl: audioFileUrls[index] ?? null, // Can be null
+        slideId: uniqueSlideId,
+        slideIndex: slide.slideIndex || (index + 1),
+        audioFileName: slide.audioFileName || `${chapter.chapterId}-${index + 1}.mp3`,
+        narration: slide.narration || { fullText: "" },
+        html: slide.html || "<p>No content available</p>",
+        revelData: slide.revelData || [],
+        caption: captionsArray?.[index] ?? null,
+        audioFileUrl: audioFileUrls[index] ?? null,
       });
     }
 
-    /* ---------- response ---------- */
-    console.log("✅ VIDEO PIPELINE COMPLETE", {
-      slides: VideoContentJson.length,
-      audio: audioFileUrls.length,
-      captions: captionsArray.length,
-    });
+    console.log("✅ VIDEO PIPELINE COMPLETE - NO REDUNDANT GEMINI CALLS!");
 
     return NextResponse.json({
       slides: VideoContentJson,
