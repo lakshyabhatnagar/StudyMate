@@ -1,6 +1,8 @@
 # 🎓 StudyMate - AI-Powered Course Creation Platform
 
-<img src="public/logo.png" alt="StudyMate Logo" style="max-width:200px;">
+<p align="center">
+  <img src="public/logo.png" alt="StudyMate Logo" width="96" />
+</p>
 
 **StudyMate** is a revolutionary AI-powered educational platform that transforms any topic into comprehensive, interactive video courses in minutes. Built with cutting-edge AI technology and modern web frameworks.
 
