@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import CourseInfoCard from "./_components/CourseInfoCard";
 import axios from "axios";
 import { useParams } from "next/navigation";
@@ -19,6 +19,7 @@ function CoursePreview() {
   const [courseDetail, setCourseDetails] = useState<Course>();
   const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
   const [generationProgress, setGenerationProgress] = useState(0);
+  const isGeneratingRef = useRef(false); // ref to survive re-renders & strict mode
 
   useEffect(() => {
     if (courseId) {
@@ -42,7 +43,7 @@ function CoursePreview() {
       );
       
       // Only generate video content if first chapter has no slides AND not already generating AND not skipping auto-generation
-      if (!firstChapterHasSlides && !isGeneratingVideo && !skipAutoGeneration && firstChapter) {
+      if (!firstChapterHasSlides && !isGeneratingRef.current && !skipAutoGeneration && firstChapter) {
         console.log("🎬 No slides found for first chapter, generating video content...");
         GenerateVideoContent(result?.data);
       } else if (firstChapterHasSlides) {
@@ -55,14 +56,15 @@ function CoursePreview() {
   };
 
   const GenerateVideoContent = async (course: Course) => {
-    // Prevent multiple simultaneous generations
-    if (isGeneratingVideo) {
+    // Prevent multiple simultaneous generations (ref survives strict mode double-fire)
+    if (isGeneratingRef.current) {
       console.log("⚠️ Video generation already in progress, skipping...");
       return;
     }
     
     // Generate content for the first chapter only to avoid overwhelming the system
     if (course.courseLayout.chapters.length > 0) {
+      isGeneratingRef.current = true;
       setIsGeneratingVideo(true);
       const toastLoad = toast.loading("Generating Video Content for Chapter 1");
       try {
@@ -81,6 +83,7 @@ function CoursePreview() {
         console.error("Error generating video content:", error);
         toast.error("Failed to generate video content", { id: toastLoad });
       } finally {
+        isGeneratingRef.current = false;
         setIsGeneratingVideo(false);
       }
     }
@@ -142,54 +145,72 @@ function CoursePreview() {
     await GetCourseDetail(true);
     toast.success("All chapters processed!", { id: refreshToast });
   };
-        const fps=30;
-        const slides=courseDetail?.chapterContentSlide??[];
-        const [durationsBySlideId, setDurationsBySlideId]=useState<Record<string,number>|null>(null);
-    
-        useEffect(()=>{
-            let cancelled=false;
-            const run=async()=>{
-                if(!slides || slides.length === 0) return;
-                
-                const entries=await Promise.all(
-                    slides.map(async(slide: any)=>{
-                        try {
-                            if (!slide?.audioFileUrl || slide.audioFileUrl.length === 0) {
-                                return [slide.slideId, fps * 8] as const; // 8 seconds default
-                            }
-                            
-                            const audioData = await getAudioData(slide.audioFileUrl);
-                            const audioSec = audioData?.durationInSeconds ?? 0;
-                            
-                            // Ensure we have a valid number
-                            if (!Number.isFinite(audioSec) || audioSec <= 0) {
-                                return [slide.slideId, fps * 8] as const; // 8 seconds fallback
-                            }
-                            
-                            const frames = Math.max(fps * 2, Math.ceil(audioSec * fps)); // Minimum 2 seconds
-                            return [slide.slideId, frames] as const;
-                        } catch (error) {
-                            console.error(`Failed to get audio data for slide ${slide.slideId}:`, error);
-                            return [slide.slideId, fps * 8] as const; // 8 seconds fallback
-                        }
-                    })
-                );
-                
-                if(!cancelled){
-                    const durationsObject = Object.fromEntries(entries);
-                    // Double-check all values are valid numbers
-                    const validDurations: Record<string, number> = {};
-                    for (const [key, value] of Object.entries(durationsObject)) {
-                        validDurations[key] = (Number.isFinite(value) && (value as number) > 0) 
-                            ? (value as number) 
-                            : fps * 8;
-                    }
-                    setDurationsBySlideId(validDurations);
-                }
-            };
-            run().catch(console.error);
-            return ()=>{cancelled=true;}
-        },[slides,fps]);
+
+  const fps = 30;
+
+  // Stable reference: only changes when courseDetail actually changes
+  // Also deduplicates by slideId to prevent key collisions
+  const slides = useMemo(() => {
+    const raw = courseDetail?.chapterContentSlide ?? [];
+    const seen = new Set<string>();
+    return raw.filter((slide) => {
+      if (seen.has(slide.slideId)) return false;
+      seen.add(slide.slideId);
+      return true;
+    });
+  }, [courseDetail]);
+
+  const [durationsBySlideId, setDurationsBySlideId] = useState<Record<string, number> | null>(null);
+
+  // Recompute durations whenever the slides array truly changes
+  useEffect(() => {
+    let cancelled = false;
+
+    const run = async () => {
+      if (slides.length === 0) {
+        setDurationsBySlideId(null);
+        return;
+      }
+
+      const entries = await Promise.all(
+        slides.map(async (slide) => {
+          try {
+            if (!slide?.audioFileUrl || slide.audioFileUrl.length === 0) {
+              return [slide.slideId, fps * 8] as const; // 8 seconds default for slides without audio
+            }
+
+            const audioData = await getAudioData(slide.audioFileUrl);
+            const audioSec = audioData?.durationInSeconds ?? 0;
+
+            if (!Number.isFinite(audioSec) || audioSec <= 0) {
+              return [slide.slideId, fps * 8] as const;
+            }
+
+            const frames = Math.max(fps * 2, Math.ceil(audioSec * fps));
+            return [slide.slideId, frames] as const;
+          } catch (error) {
+            console.error(`Failed to get audio data for slide ${slide.slideId}:`, error);
+            return [slide.slideId, fps * 8] as const;
+          }
+        })
+      );
+
+      if (!cancelled) {
+        const validDurations: Record<string, number> = {};
+        for (const [key, value] of entries) {
+          validDurations[key as string] =
+            Number.isFinite(value) && (value as number) > 0
+              ? (value as number)
+              : fps * 8;
+        }
+        console.log("✅ Duration map computed for", Object.keys(validDurations).length, "slides");
+        setDurationsBySlideId(validDurations);
+      }
+    };
+
+    run().catch(console.error);
+    return () => { cancelled = true; };
+  }, [slides]);
 
   return (
     <div className="flex flex-col items-center">

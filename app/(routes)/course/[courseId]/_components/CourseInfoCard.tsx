@@ -1,8 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useMemo } from 'react'
 import { Course } from '@/type/CourseType';
 import { BookOpen, ChartNoAxesColumnIncreasing, Sparkles } from 'lucide-react';
 import { Player } from '@remotion/player';
-import { getAudioData } from '@remotion/media-utils'
 import { CourseComposition } from './ChapterVideo';
 
 type Props={
@@ -13,25 +12,40 @@ type Props={
 function CourseInfoCard({course, durationsBySlideId}:Props) {
     const fps=30;
     
-    const slides=course?.chapterContentSlide??[];
+    const allSlides=course?.chapterContentSlide??[];
+
+    // Only include slides that actually have audio, deduplicated by slideId
+    const playableSlides = useMemo(() => {
+        const seen = new Set<string>();
+        return allSlides.filter(s => {
+            if (!s.audioFileUrl || s.audioFileUrl.length === 0) return false;
+            if (seen.has(s.slideId)) return false;
+            seen.add(s.slideId);
+            return true;
+        });
+    }, [allSlides]);
+
     const GAP_FRAMES = Math.round(1 * fps);
+
     const durationInFrames=useMemo(()=>{
-        if(!durationsBySlideId || slides.length === 0) {
-            return slides.length > 0 ? slides.length * fps * 8 + (slides.length - 1) * GAP_FRAMES : fps * 8; // 8 seconds per slide + gaps
+        if(!durationsBySlideId || playableSlides.length === 0) {
+            return playableSlides.length > 0
+                ? playableSlides.length * fps * 8 + Math.max(0, playableSlides.length - 1) * GAP_FRAMES
+                : fps * 8; // minimum fallback
         }
         
-        const slideDuration = slides.reduce((sum,slide)=> {
-            const duration = durationsBySlideId[slide.slideId] ?? fps * 8; // 8 seconds fallback
+        const slideDuration = playableSlides.reduce((sum,slide)=> {
+            const duration = durationsBySlideId[slide.slideId] ?? fps * 8;
             return sum + duration;
         }, 0);
         
-        const gapsDuration = slides.length > 1 ? (slides.length - 1) * GAP_FRAMES : 0;
+        const gapsDuration = playableSlides.length > 1 ? (playableSlides.length - 1) * GAP_FRAMES : 0;
         const totalDuration = slideDuration + gapsDuration;
         
-        return Math.max(fps * 2, totalDuration); // Ensure minimum 2 seconds
-    },[durationsBySlideId,slides,fps,GAP_FRAMES]);
+        return Math.max(fps * 2, totalDuration);
+    },[durationsBySlideId,playableSlides,fps,GAP_FRAMES]);
 
-    if(!course || slides.length === 0){
+    if(!course || playableSlides.length === 0){
         return <div className="text-white p-8">Loading course content...</div>
     }
 
@@ -51,11 +65,10 @@ function CourseInfoCard({course, durationsBySlideId}:Props) {
                 <Player
                     component={CourseComposition}
                     inputProps={{
-                        //@ts-ignore
-                                slides:slides,
-                                durationsBySlideId: durationsBySlideId || {},
-                                }} 
-                    durationInFrames={durationInFrames || (slides.length * fps * 8)}
+                        slides: playableSlides,
+                        durationsBySlideId: durationsBySlideId || {},
+                    }} 
+                    durationInFrames={durationInFrames || (playableSlides.length * fps * 8)}
                     compositionWidth={1280}
                     compositionHeight={720}
                     fps={30}
