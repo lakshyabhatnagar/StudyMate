@@ -8,7 +8,7 @@ import { VideoSlidesDummy } from "@/data/Dummy";
 import { db } from "@/config/db";
 import { chapterContentSlides } from "@/config/schema";
 import { and, eq } from "drizzle-orm";
-import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
+import { createClient } from '@deepgram/sdk';
 
 
 /* ---------- route ---------- */
@@ -59,21 +59,38 @@ export async function POST(req: NextRequest) {
       revelData: ["r1"]
     }));
 
-    /* ---------- ElevenLabs TTS: generate audio files ---------- */
-    console.log("🎵 Starting audio generation with ElevenLabs...");
+    /* ---------- Deepgram TTS: generate audio files ---------- */
+    console.log("🎵 Starting audio generation with Deepgram...");
     
     // Verify API key is available
-    if (!process.env.ELEVENLABS_API_KEY) {
-      throw new Error("ELEVENLABS_API_KEY environment variable is not set");
+    if (!process.env.DEEPGRAM_API_KEY) {
+      throw new Error("DEEPGRAM_API_KEY environment variable is not set");
     }
-    console.log("✅ ElevenLabs API key found");
+    console.log("✅ Deepgram API key found");
     
-    // Initialize ElevenLabs client
-    const elevenlabs = new ElevenLabsClient({
-      apiKey: process.env.ELEVENLABS_API_KEY,
-    });
+    // Initialize Deepgram client
+    const deepgram = createClient(process.env.DEEPGRAM_API_KEY);
     
     const audioFileUrls: string[] = [];
+    
+    // Helper function to convert stream to audio buffer
+    const getAudioBuffer = async (response: ReadableStream<Uint8Array>): Promise<Buffer> => {
+      const reader = response.getReader();
+      const chunks: Uint8Array[] = [];
+      
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+      }
+      
+      const dataArray = chunks.reduce(
+        (acc, chunk) => Uint8Array.from([...acc, ...chunk]),
+        new Uint8Array(0)
+      );
+      
+      return Buffer.from(dataArray.buffer);
+    };
     
     for (let i = 0; i < VideoContentJson.length; i++) {
       const slide = VideoContentJson[i];
@@ -94,30 +111,25 @@ export async function POST(req: NextRequest) {
       }
 
       try {
-        const audio = await elevenlabs.textToSpeech.convert(
-          'JBFqnCBsd6RMkjVDRZzb',
+        // Use Deepgram Aura TTS
+        const response = await deepgram.speak.request(
+          { text: narration },
           {
-            text: narration,
-            modelId: 'eleven_multilingual_v2',
-            outputFormat: 'mp3_44100_128',
+            model: 'aura-asteria-en', // Options: aura-asteria-en, aura-luna-en, aura-stella-en, aura-athena-en, aura-hera-en, aura-orion-en, aura-arcas-en, aura-perseus-en, aura-angus-en, aura-orpheus-en, aura-helios-en, aura-zeus-en
+            encoding: 'mp3',
           }
         );
 
-        // Convert the audio stream to buffer
-        const chunks: Uint8Array[] = [];
-        const reader = audio.getReader();
+        // Get the audio stream from the response
+        const stream = await response.getStream();
         
-        try {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            chunks.push(value);
-          }
-        } finally {
-          reader.releaseLock();
+        if (!stream) {
+          throw new Error("No audio stream returned from Deepgram");
         }
         
-        const audioBuffer = Buffer.concat(chunks.map(chunk => Buffer.from(chunk)));
+        // Convert stream to buffer
+        const audioBuffer = await getAudioBuffer(stream);
+        
         const fileName = VideoContentJson[i]?.audioFileName ?? `chapter-${i}-audio`;
         const audioUrl = await saveAudioToS3(audioBuffer, fileName);
         audioFileUrls.push(audioUrl);

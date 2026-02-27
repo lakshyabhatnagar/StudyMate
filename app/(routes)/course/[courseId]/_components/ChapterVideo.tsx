@@ -135,9 +135,17 @@ export const CourseComposition = ({ slides, durationsBySlideId }: Props) => {
       return [];
     }
 
+    // Deduplicate slides by slideId (keep the first occurrence)
+    const seen = new Set<string>();
+    const uniqueSlides = slides.filter((slide) => {
+      if (seen.has(slide.slideId)) return false;
+      seen.add(slide.slideId);
+      return true;
+    });
+
     let from = 0;
 
-    const result = slides.map((slide) => {
+    const result = uniqueSlides.map((slide) => {
       const dur = durationsBySlideId[slide.slideId] ?? Math.ceil(8 * fps); // 8 seconds fallback
 
       const item = { slide, from, dur };

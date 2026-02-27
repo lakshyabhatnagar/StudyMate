@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useMemo } from 'react'
 import { Course } from '@/type/CourseType';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dot } from 'lucide-react';
@@ -12,7 +12,16 @@ type Props={
 
 function CourseChapters({course, durationsBySlideId}:Props) {
 
-    const slides=course?.chapterContentSlide??[];
+    // Deduplicate slides by slideId
+    const slides = useMemo(() => {
+        const raw = course?.chapterContentSlide ?? [];
+        const seen = new Set<string>();
+        return raw.filter((slide) => {
+            if (seen.has(slide.slideId)) return false;
+            seen.add(slide.slideId);
+            return true;
+        });
+    }, [course?.chapterContentSlide]);
     
     const GetChapterDurationInFrame = (chapterId: string) => {
         if (!durationsBySlideId || !course) return 180; // 6 seconds fallback
@@ -26,22 +35,28 @@ function CourseChapters({course, durationsBySlideId}:Props) {
 
         if (playableSlides.length === 0) return 180; // 6 seconds fallback
 
+        const GAP_SECONDS = 1;
+        const GAP_FRAMES = Math.round(GAP_SECONDS * 30); // must match CourseComposition
+
         let total = 0;
 
         for (const slide of playableSlides) {
             const dur = durationsBySlideId[slide.slideId];
 
-            // ⛔ absolutely forbid NaN and ensure we have a valid number
             if (typeof dur !== "number" || !Number.isFinite(dur) || dur <= 0) {
-                total += 180; // 6s fallback
+                total += 240; // 8s fallback (must match CourseComposition fallback)
             } else {
                 total += dur;
             }
         }
 
+        // Add gap frames between slides (same as CourseComposition does)
+        if (playableSlides.length > 1) {
+            total += (playableSlides.length - 1) * GAP_FRAMES;
+        }
+
         const result = Math.max(1, total);
         
-        // Final safety check - ensure result is never NaN
         return Number.isFinite(result) ? result : 180;
     };
 
@@ -79,33 +94,51 @@ function CourseChapters({course, durationsBySlideId}:Props) {
                                 ))}
                             </div>
                             <div className='overflow-hidden'>
-                                {durationsBySlideId ? (
-                                    <Player
-                                        component={CourseComposition}
-                                        inputProps={{
-                                            slides: slides.filter((slide) => 
-                                                slide.chapterId === chapter.chapterId && 
-                                                slide.audioFileUrl && 
-                                                slide.audioFileUrl.length > 0
-                                            ),
-                                            durationsBySlideId: durationsBySlideId,
-                                        }}  
-                                        durationInFrames={GetChapterDurationInFrame(chapter?.chapterId)}
-                                        compositionWidth={1280}
-                                        compositionHeight={720}
-                                        fps={30}
-                                        controls
-                                        style={{
-                                            width: '80%',
-                                            height: '180px',
-                                            aspectRatio:'16/9',
-                                        }} 
-                                    />
-                                ) : (
-                                    <div className="bg-gray-200 rounded-lg h-45 flex items-center justify-center">
-                                        <p className="text-gray-500">Loading video...</p>
-                                    </div>
-                                )}
+                                {(() => {
+                                    const chapterSlides = slides.filter((slide) => 
+                                        slide.chapterId === chapter.chapterId && 
+                                        slide.audioFileUrl && 
+                                        slide.audioFileUrl.length > 0
+                                    );
+
+                                    if (!durationsBySlideId) {
+                                        return (
+                                            <div className="bg-gray-200 rounded-lg h-[180px] flex items-center justify-center">
+                                                <p className="text-gray-500">Loading video...</p>
+                                            </div>
+                                        );
+                                    }
+
+                                    if (chapterSlides.length === 0) {
+                                        return (
+                                            <div className="bg-gray-100 rounded-lg h-[180px] flex items-center justify-center">
+                                                <p className="text-gray-400 text-sm text-center px-4">
+                                                    No video generated yet.<br />Click "Generate Remaining Videos" above.
+                                                </p>
+                                            </div>
+                                        );
+                                    }
+
+                                    return (
+                                        <Player
+                                            component={CourseComposition}
+                                            inputProps={{
+                                                slides: chapterSlides,
+                                                durationsBySlideId: durationsBySlideId,
+                                            }}  
+                                            durationInFrames={GetChapterDurationInFrame(chapter?.chapterId)}
+                                            compositionWidth={1280}
+                                            compositionHeight={720}
+                                            fps={30}
+                                            controls
+                                            style={{
+                                                width: '80%',
+                                                height: '180px',
+                                                aspectRatio:'16/9',
+                                            }} 
+                                        />
+                                    );
+                                })()}
                             </div>
                         </div>
                     </CardContent>
